@@ -6,14 +6,14 @@ final class Section {
 	}
 
 	static void title(String text) {
-		System.out.println();
-		System.out.println("=".repeat(78));
-		System.out.println("  " + text);
-		System.out.println("=".repeat(78));
+		IO.println(); // Java 25: java.lang.IO, no import needed
+		IO.println("=".repeat(78));
+		IO.println("  " + text);
+		IO.println("=".repeat(78));
 	}
 
 	static void line(String label, Object value) {
-		System.out.printf("  %-10s %s%n", label, value);
+		IO.println("  %-10s %s".formatted(label, value));
 	}
 
 }

@@ -1,8 +1,5 @@
 package demo;
 
-import java.io.BufferedReader;
-import java.io.IOException;
-import java.io.InputStreamReader;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -26,6 +23,14 @@ import org.springframework.ai.model.tool.ToolCallLimitExceededException;
 import org.springframework.ai.model.tool.ToolCallingManager;
 import org.springframework.ai.model.tool.ToolExecutionResult;
 import org.springframework.ai.ollama.OllamaChatModel;
+import org.springframework.ai.session.DefaultSessionService;
+import org.springframework.ai.session.EventType;
+import org.springframework.ai.session.InMemorySessionRepository;
+import org.springframework.ai.session.SessionService;
+import org.springframework.ai.session.advisor.SessionAdvisors;
+import org.springframework.ai.session.compaction.TurnCountTrigger;
+import org.springframework.ai.session.compaction.WindowCompactionStrategy;
+import org.springframework.ai.session.tool.SessionRecallTools;
 import org.springframework.ai.support.ToolCallbacks;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.CommandLineRunner;
@@ -52,7 +57,7 @@ public class BookingApp {
 		return args -> {
 			BookingTools tools = new BookingTools();
 			ChatMemory memory = MessageWindowChatMemory.builder().build();
-			ChatClient chatClient = builder.defaultSystem(SYSTEM)
+			ChatClient chatClient = builder.clone().defaultSystem(SYSTEM) // clone(): the Builder is mutable, scenario 7 reuses it
 				.defaultTools(tools)
 				.defaultAdvisors(MessageChatMemoryAdvisor.builder(memory).build())
 				.build();
@@ -145,7 +150,44 @@ public class BookingApp {
 				DecisionResponse d = decisionModel.call(msg,
 						Map.of("cancel", YesNoQuestion.of("Does the user want to cancel a booking?")));
 				var yes = d.getYesNo("cancel");
-				System.out.printf("  %-55s cancel? %-5s (p=%.2f)%n", "\"" + msg + "\"", yes.isYes(), yes.getProbability());
+				IO.println("  %-55s cancel? %-5s (p=%.2f)".formatted("\"" + msg + "\"", yes.isYes(), yes.getProbability()));
+			}
+
+			// 7) Session API: the 2.1 replacement for ChatMemory (event log + compaction + recall tool)
+			Section.title("7) Session API  [2.1: replaces ChatMemory: event log, compaction, recall]");
+			SessionService sessions = DefaultSessionService.builder()
+				.sessionRepository(InMemorySessionRepository.builder().build()) // database: spring-ai-starter-model-session-jdbc
+				.build();
+			ChatClient sessionClient = builder.clone()
+				.defaultSystem(SYSTEM + " If the user refers to something you cannot see in the conversation, "
+						+ "use the conversation_search tool to look it up.")
+				.defaultTools(tools, SessionRecallTools.builder(sessions).build()) // gives the model conversation_search
+				.defaultAdvisors(SessionAdvisors.builder(sessions)
+					// after more than 3 turns, keep only the last 2 turns in the prompt (the log keeps everything)
+					.compaction(new TurnCountTrigger(3), WindowCompactionStrategy.builder().lastTurns(2).build())
+					.asyncCompaction(false)
+					.sessionIdInToolContext(true) // lets conversation_search know which session to search
+					.build())
+				.build();
+			String sessionId = "trip-42";
+			for (String question : List.of("Find flights to Porto on 2026-12-10", "Book the cheapest one",
+					"Now find flights to Madrid on 2026-12-12", "Which Madrid flight leaves earliest?",
+					"What was the booking id of my Porto flight?")) {
+				BookingTools.CALLS.set(0);
+				String answer = sessionClient.prompt()
+					.user(question)
+					.advisors(SessionAdvisors.session(sessionId)) // session is created on first use (findOrCreate)
+					.call()
+					.content();
+				long compactions = sessions.getEvents(sessionId)
+					.stream()
+					.filter(e -> EventType.COMPACTION.equals(e.getType()))
+					.count();
+				IO.println("  > " + question);
+				Section.line("answer", abbreviate(answer));
+				Section.line("session", sessions.getEvents(sessionId).size() + " events stored, "
+						+ sessions.getActiveMessages(sessionId).size() + " messages sent to the model, "
+						+ compactions + " compaction(s)");
 			}
 		};
 	}
@@ -182,20 +224,12 @@ public class BookingApp {
 	}
 
 	static boolean ask(String question, boolean autoApprove) {
-		System.out.print(question);
-		System.out.flush();
 		if (autoApprove) {
-			System.out.println("y (auto-approve)");
+			IO.println(question + "y (auto-approve)");
 			return true;
 		}
-		// read stdin directly: System.console() is null when stdout is piped (run.sh uses tee)
-		try {
-			String answer = new BufferedReader(new InputStreamReader(System.in)).readLine();
-			return answer != null && answer.trim().toLowerCase().startsWith("y");
-		}
-		catch (IOException ex) {
-			return false;
-		}
+		String answer = IO.readln(question); // Java 25: prints the prompt, reads a line (null at end of input)
+		return answer != null && answer.trim().toLowerCase().startsWith("y");
 	}
 
 	static String describe(List<AssistantMessage.ToolCall> calls) {

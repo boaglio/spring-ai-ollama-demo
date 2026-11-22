@@ -18,7 +18,7 @@ AUTO_APPROVE=true ./run.sh 2.1          # approve the "cancel" without being ask
 CHAT_MODEL=llama3.1:8b ./run.sh         # use another tool-capable model
 ```
 
-You need Java 21+, Maven, and Ollama running on `localhost:11434` (or set `OLLAMA_URL`). The models are `qwen3:8b` for chat (it handles tools and thinking) and `d1-omni:600m` for the 2.1 decision model. `run.sh` offers to pull any model you don't have. Output goes to `run-1.1.log` and `run-2.1.log`.
+You need Java 25+, Maven, and Ollama running on `localhost:11434` (or set `OLLAMA_URL`). The models are `qwen3:8b` for chat (it handles tools and thinking) and `d1-omni:600m` for the 2.1 decision model. `run.sh` offers to pull any model you don't have. Output goes to `run-1.1.log` and `run-2.1.log`.
 
 ---
 
@@ -33,8 +33,8 @@ This code still compiles after the upgrade, but the tools quietly stop running.
 | | Code | Output |
 |---|---|---|
 | 1.1 | [`BookingApp.java#L40-L48`](booking-1.1/src/main/java/demo/BookingApp.java#L40-L48) | `tools run 1`, final answer |
-| 2.1 | [`BookingApp.java#L61-L71`](booking-2.1/src/main/java/demo/BookingApp.java#L61-L71) | `tools run 0`, `toolCalls [searchFlights{...}] <- returned, not executed`, empty answer |
-| 2.1 manual loop | [`runToolLoop` `#L153-L183`](booking-2.1/src/main/java/demo/BookingApp.java#L153-L183) | `manager.executeToolCalls(prompt, response)`, then call the model again |
+| 2.1 | [`BookingApp.java#L68-L79`](booking-2.1/src/main/java/demo/BookingApp.java#L68-L79) | `tools run 0`, `toolCalls [searchFlights{...}] <- returned, not executed`, empty answer |
+| 2.1 manual loop | [`runToolLoop` `#L198-L228`](booking-2.1/src/main/java/demo/BookingApp.java#L198-L228) | `manager.executeToolCalls(prompt, response)`, then call the model again |
 
 With `ChatClient` (scenarios 2 to 5) the loop still runs automatically in both versions.
 
@@ -46,7 +46,7 @@ In 2.x, options objects have no setters (`setTemperature()` won't compile). For 
 OllamaChatOptions.builder().toolCallbacks(...).build()
 ```
 
-works in 1.1 ([`#L43`](booking-1.1/src/main/java/demo/BookingApp.java#L43)), but in 2.1 it fails with `HTTP 404 - model 'mistral' not found`. In 2.x, start from the model's configured defaults and change them with `mutate()` ([`#L62-L65`](booking-2.1/src/main/java/demo/BookingApp.java#L62-L65)):
+works in 1.1 ([`#L43`](booking-1.1/src/main/java/demo/BookingApp.java#L43)), but in 2.1 it fails with `HTTP 404 - model 'mistral' not found`. In 2.x, start from the model's configured defaults and change them with `mutate()` ([`#L70-L73`](booking-2.1/src/main/java/demo/BookingApp.java#L70-L73)):
 
 ```java
 chatModel.getOptions().mutate().toolCallbacks(ToolCallbacks.from(tools)).build();
@@ -71,13 +71,13 @@ In 2.1, messages are made of ordered **parts**: `TextPart`, `ReasoningPart`, `To
 | | Code | How you read it |
 |---|---|---|
 | 1.1 | [`#L49-L60`](booking-1.1/src/main/java/demo/BookingApp.java#L49-L60) | `r.getResult().getMetadata().get("thinking")`: an Ollama-specific key in the *generation* metadata |
-| 2.1 | [`#L78-L89`](booking-2.1/src/main/java/demo/BookingApp.java#L78-L89) | `out.getReasoning()` → `List<ReasoningPart>`; `out.getParts()` → `[ReasoningPart, TextPart]` |
+| 2.1 | [`#L86-L97`](booking-2.1/src/main/java/demo/BookingApp.java#L86-L97) | `out.getReasoning()` → `List<ReasoningPart>`; `out.getParts()` → `[ReasoningPart, TextPart]` |
 
 ### 5. Chat memory needs an explicit conversation id, and `ChatMemory` is deprecated
 
-In 1.1, `MessageChatMemoryAdvisor` used a default conversation id when you didn't pass one. 1.1 scenario 5 relies on that ([`#L82-L93`](booking-1.1/src/main/java/demo/BookingApp.java#L82-L93)). In 2.x the same call throws `IllegalArgumentException: conversationId cannot be null`, so every call has to pass `ChatMemory.CONVERSATION_ID` ([`#L129`](booking-2.1/src/main/java/demo/BookingApp.java#L129)).
+In 1.1, `MessageChatMemoryAdvisor` used a default conversation id when you didn't pass one. 1.1 scenario 5 relies on that ([`#L82-L93`](booking-1.1/src/main/java/demo/BookingApp.java#L82-L93)). In 2.x the same call throws `IllegalArgumentException: conversationId cannot be null`, so every call has to pass `ChatMemory.CONVERSATION_ID` ([`#L137`](booking-2.1/src/main/java/demo/BookingApp.java#L137)).
 
-2.1 also deprecates `ChatMemory`, `MessageWindowChatMemory` and `MessageChatMemoryAdvisor`, to be removed in 3.0. Their replacement is the new **Session API** (`SessionService`, `SessionAdvisors`, JDBC repository, compaction). This demo still uses `ChatMemory` in both apps so the two stay comparable.
+2.1 also deprecates `ChatMemory`, `MessageWindowChatMemory` and `MessageChatMemoryAdvisor`, to be removed in 3.0. Their replacement is the new **Session API**, shown in [section 9](#9-session-api-the-replacement-for-chatmemory-new-in-21). Scenarios 2 to 5 still use `ChatMemory` in both apps so the two stay comparable.
 
 ### 6. Tools that need a person's approval (new in 2.1)
 
@@ -89,8 +89,8 @@ In 1.1, `MessageChatMemoryAdvisor` used a default conversation id when you didn'
 | | Code | Output |
 |---|---|---|
 | 1.1 | [`#L71-L81`](booking-1.1/src/main/java/demo/BookingApp.java#L71-L81) | `cancelBooking` runs immediately, no questions asked |
-| 2.1 ChatClient | [`#L100-L111`](booking-2.1/src/main/java/demo/BookingApp.java#L100-L111) | the loop **pauses**: `tools run 0`, `awaiting [call_…]` (`ToolCallDecisions.isAwaitingDecision`) |
-| 2.1 approve/deny | [`#L113-L120`](booking-2.1/src/main/java/demo/BookingApp.java#L113-L120), [`#L160-L176`](booking-2.1/src/main/java/demo/BookingApp.java#L160-L176) | `executeToolCalls` throws `ToolCallConfirmationRequiredException`; you collect `ToolCallDecision.allow(..)` / `deny(..)` and call `executeToolCalls(prompt, response, decisions)`. A denied call goes back to the model as a refusal, and the model explains it. |
+| 2.1 ChatClient | [`#L108-L119`](booking-2.1/src/main/java/demo/BookingApp.java#L108-L119) | the loop **pauses**: `tools run 0`, `awaiting [call_…]` (`ToolCallDecisions.isAwaitingDecision`) |
+| 2.1 approve/deny | [`#L121-L128`](booking-2.1/src/main/java/demo/BookingApp.java#L121-L128), [`#L206-L222`](booking-2.1/src/main/java/demo/BookingApp.java#L206-L222) | `executeToolCalls` throws `ToolCallConfirmationRequiredException`; you collect `ToolCallDecision.allow(..)` / `deny(..)` and call `executeToolCalls(prompt, response, decisions)`. A denied call goes back to the model as a refusal, and the model explains it. |
 
 ### 7. Tool call limits (new in 2.1)
 
@@ -99,7 +99,7 @@ In 1.1, `MessageChatMemoryAdvisor` used a default conversation id when you didn'
 | | Code | Output |
 |---|---|---|
 | 1.1 | [`#L82-L93`](booking-1.1/src/main/java/demo/BookingApp.java#L82-L93) | all 7 searches run |
-| 2.1 | [`#L122-L139`](booking-2.1/src/main/java/demo/BookingApp.java#L122-L139) + `max-calls-per-tool.searchFlights=3` | 3 searches, then `finish toolCallLimitExceeded` |
+| 2.1 | [`#L130-L147`](booking-2.1/src/main/java/demo/BookingApp.java#L130-L147) + `max-calls-per-tool.searchFlights=3` | 3 searches, then `finish toolCallLimitExceeded` |
 
 Through `ChatClient`, going over the limit ends the turn with that finish reason and a final message. It does **not** throw `ToolCallLimitExceededException` (`on-limit-exceeded=throw` is the property's default). Check the finish reason.
 
@@ -107,13 +107,55 @@ Through `ChatClient`, going over the limit ends the turn with that finish reason
 
 `DecisionModel` is a small classifier API that answers `YesNoQuestion`, `ScoreQuestion` and `ChoiceQuestion` with probabilities. `OllamaDecisionModel` uses a ~600M model (`d1-omni:600m`), so a tiny local model can make routing decisions in front of the large chat model. 2.1 also builds `DecisionDocumentReranker`, `DecisionDocumentFilter` and `DecisionToolIndex` on top of it.
 
-[`#L141-L151`](booking-2.1/src/main/java/demo/BookingApp.java#L141-L151):
+[`#L149-L157`](booking-2.1/src/main/java/demo/BookingApp.java#L149-L157):
 
 ```
 "Please get rid of my Lisbon trip"                    cancel? true  (p=1.00)
 "What's the weather like in Lisbon?"                  cancel? false (p=0.43)
 "I don't want to fly anymore, drop the reservation"   cancel? true  (p=1.00)
 ```
+
+### 9. Session API: the replacement for `ChatMemory` (new in 2.1)
+
+`ChatMemory` keeps a sliding window of messages. Anything that falls out of the window is **gone**. The Session API stores the conversation as an **append-only event log** instead, and separates two things that `ChatMemory` mixes together:
+
+- **What is stored:** every message, kept for good.
+- **What the model sees:** the *active* messages, a view of the log that **compaction** keeps short.
+
+| | 1.1 `ChatMemory` | 2.1 Session API |
+|---|---|---|
+| Storage | `ChatMemoryRepository` (in-memory, JDBC, Cassandra, Mongo, Neo4j, Redis) | `SessionRepository` (`InMemorySessionRepository`; JDBC via `spring-ai-starter-model-session-jdbc`) |
+| Service | `MessageWindowChatMemory` | `SessionService` (`DefaultSessionService`) |
+| Advisor | `MessageChatMemoryAdvisor.builder(memory).build()` | `SessionAdvisors.builder(sessions).build()` (returns a list of advisors) |
+| Conversation id | `a.param(ChatMemory.CONVERSATION_ID, id)` | `SessionAdvisors.session(id)`, which uses the same `chat_memory_conversation_id` key; the session is created on first use |
+| Old messages | dropped once they fall out of the window | kept in the log; compaction only changes what the model sees |
+| Compaction | fixed window size | a `CompactionTrigger` (`TurnCountTrigger`, `TokenCountTrigger`) decides **when**, a `CompactionStrategy` (`WindowCompactionStrategy`: `lastTurns`, `lastEvents`, `tokenBudget`, optionally with an LLM `summarizer`) decides **how** |
+| Recall | none | `SessionRecallTools` gives the model a `conversation_search` tool over the **whole** log |
+| Extras | — | session metadata and time-to-live (`CreateSessionRequest`), and `findByMetadata` |
+
+Scenario 7 ([`#L159-L195`](booking-2.1/src/main/java/demo/BookingApp.java#L159-L195)) wires it up like this:
+
+```java
+SessionService sessions = DefaultSessionService.builder()
+    .sessionRepository(InMemorySessionRepository.builder().build())
+    .build();
+
+ChatClient sessionClient = builder.clone()
+    .defaultTools(tools, SessionRecallTools.builder(sessions).build())   // conversation_search
+    .defaultAdvisors(SessionAdvisors.builder(sessions)
+        .compaction(new TurnCountTrigger(3), WindowCompactionStrategy.builder().lastTurns(2).build())
+        .sessionIdInToolContext(true)                                    // so conversation_search knows the session
+        .build())
+    .build();
+
+sessionClient.prompt().user(question).advisors(SessionAdvisors.session("trip-42")).call().content();
+```
+
+It runs five turns: search Porto, book the cheapest, search Madrid, ask which Madrid flight leaves earliest, then ask *"What was the booking id of my Porto flight?"*. After the 4th turn there are more than 3 turns, so compaction keeps only the last 2 turns for the model and the Porto booking drops out of the prompt. The model then has to look it up with `conversation_search`. With `ChatMemory` and a 2-turn window, that booking would simply be lost. Each turn prints how many events are stored, how many messages are sent to the model, and how many compactions have run.
+
+The compaction behaviour above was checked directly against `SessionService` without an LLM. After 4 turns there were 9 events stored (8 messages plus 1 `COMPACTION` event), 4 active messages, and `searchEvents("BK-…")` still found the old booking. Whether the model actually *calls* `conversation_search` depends on the model. If it doesn't, the answer shows the limitation instead.
+
+A note on `ChatClient.Builder`: the auto-configured builder is **mutable**. Calling `defaultSystem(...)` or `defaultAdvisors(...)` on it changes it for everyone who uses it later, so use `builder.clone()` whenever you build more than one client from it ([`#L63`](booking-2.1/src/main/java/demo/BookingApp.java#L63)).
 
 ---
 

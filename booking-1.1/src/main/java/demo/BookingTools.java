@@ -40,7 +40,7 @@ public class BookingTools {
 
 	private static void log(String call) {
 		CALLS.incrementAndGet();
-		System.out.println("      🔧 TOOL EXECUTED: " + call);
+		IO.println("      🔧 TOOL EXECUTED: " + call);
 	}
 
 }

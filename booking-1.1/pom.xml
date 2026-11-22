@@ -12,7 +12,7 @@
   <artifactId>booking-1.1</artifactId>
   <version>1.0.0</version>
   <properties>
-    <java.version>21</java.version>
+    <java.version>25</java.version>
     <spring-ai.version>1.1.1</spring-ai.version>
   </properties>
   <dependencies>

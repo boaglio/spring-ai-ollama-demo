@@ -41,6 +41,17 @@ AUTO_APPROVE=true ./run.sh 2.1          # approve the "cancel" without being ask
 CHAT_MODEL=llama3.1:8b ./run.sh         # use another tool-capable model
 ```
 
+On Windows, use `run.cmd` from Command Prompt or `run.ps1` from PowerShell. `run.cmd` starts `run.ps1` without changing the PowerShell execution policy.
+
+```powershell
+.\run.cmd                                      # both apps (Command Prompt or PowerShell)
+.\run.cmd 2.1                                  # just one
+$env:AUTO_APPROVE = "true"; .\run.ps1 2.1      # PowerShell: approve the cancel without being asked
+$env:CHAT_MODEL = "llama3.1:8b"; .\run.ps1     # PowerShell: another model
+```
+
+In Command Prompt, set variables first, for example `set AUTO_APPROVE=true` and then `run.cmd`. On Windows the log files are written only with `AUTO_APPROVE=true`. PowerShell passes a program's output on line by line, so logging the interactive run would hide the `[s/N]` prompt until you had answered it.
+
 You need Java 25+, Maven, and Ollama running on `localhost:11434` (or set `OLLAMA_URL`). The models are `qwen3:8b` for chat (it handles tools and thinking) and `d1-omni:600m` for the 2.1 decision model. `run.sh` offers to pull any model you don't have. Output goes to `run-1.1.log` and `run-2.1.log`.
 
 ---

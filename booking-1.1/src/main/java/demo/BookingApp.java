@@ -15,6 +15,8 @@ import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.annotation.Bean;
 
+import demo.domain.Booking;
+
 /** Spring AI 1.1.x on Spring Boot 3.5: the "before" picture. */
 @SpringBootApplication
 public class BookingApp {

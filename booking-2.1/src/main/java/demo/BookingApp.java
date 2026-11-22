@@ -38,6 +38,8 @@ import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.annotation.Bean;
 
+import demo.domain.Booking;
+
 /** Spring AI 2.1.x on Spring Boot 4.2: the "after" picture. */
 @SpringBootApplication
 public class BookingApp {

@@ -6,6 +6,9 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
 
+import demo.domain.Booking;
+import demo.domain.Flight;
+
 /** Fake flight backend. Every call prints a line, so you can see when a tool really runs. */
 public class BookingTools {
 

@@ -1,4 +1,4 @@
-package demo;
+package demo.domain;
 
 public record Booking(String bookingId, String flightNumber, int priceEur) {
 }

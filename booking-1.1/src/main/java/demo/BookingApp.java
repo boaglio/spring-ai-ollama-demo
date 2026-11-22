@@ -15,15 +15,15 @@ import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.annotation.Bean;
 
+import demo.common.Section;
 import demo.domain.Booking;
+
+import static demo.common.Prompts.SYSTEM;
+import static demo.common.Text.abbreviate;
 
 /** Spring AI 1.1.x on Spring Boot 3.5: the "before" picture. */
 @SpringBootApplication
 public class BookingApp {
-
-	static final String SYSTEM = """
-			You are a flight booking assistant. Always use the tools to search, book or cancel.
-			Today is 2026-11-21. Prices are in EUR. Answer briefly.""";
 
 	public static void main(String[] args) {
 		SpringApplication.run(BookingApp.class, args);
@@ -43,7 +43,7 @@ public class BookingApp {
 			Section.title("1) ChatModel.call() with tools  [1.1: tools run INSIDE the ChatModel]");
 			BookingTools.CALLS.set(0);
 			var options = OllamaChatOptions.builder().toolCallbacks(ToolCallbacks.from(tools)).build();
-			ChatResponse direct = chatModel.call(new Prompt("Which flights go to Lisbon on 2026-12-04?", options));
+			ChatResponse direct = chatModel.call(new Prompt("Quais voos vão para Recife em 04/12/2026?", options));
 			Section.line("tools run", BookingTools.CALLS.get());
 			Section.line("toolCalls", direct.getResult().getOutput().getToolCalls().size() + " pending (already executed)");
 			Section.line("answer", direct.getResult().getOutput().getText());
@@ -51,7 +51,7 @@ public class BookingApp {
 			// 2) ChatClient + memory + thinking
 			Section.title("2) ChatClient + memory + thinking  [1.1: thinking hidden in metadata]");
 			ChatResponse r = chatClient.prompt()
-				.user("Find flights to Lisbon on 2026-12-04")
+				.user("Busque voos para Recife no dia 04/12/2026")
 				.options(OllamaChatOptions.builder().enableThinking().build()) // 1.1 builder method
 				.advisors(a -> a.param(ChatMemory.CONVERSATION_ID, "demo"))
 				.call()
@@ -61,20 +61,39 @@ public class BookingApp {
 			Section.line("thinking", abbreviate(r.getResult().getMetadata().get("thinking")));
 			Section.line("answer", out.getText());
 
-			// 3) Structured output, relying on the memory of turn 2
+			// 3) Book first (plain text, so the tool can run), then ask for the result as a record.
+			// Asking for entity(...) in the same turn made the model answer with JSON straight away,
+			// without calling bookFlight: the "booking" it returned was invented.
 			Section.title("3) Book the cheapest (memory) -> Booking record");
-			Booking booking = chatClient.prompt()
-				.user("Book the cheapest one")
+			BookingTools.CALLS.set(0);
+			String booked = chatClient.prompt()
+				.user("Reserve o voo mais barato")
 				.advisors(a -> a.param(ChatMemory.CONVERSATION_ID, "demo"))
 				.call()
-				.entity(Booking.class);
+				.content();
+			Section.line("tools run", BookingTools.CALLS.get());
+			Section.line("answer", abbreviate(booked));
+			Booking booking = null;
+			try {
+				booking = chatClient.prompt()
+					.user("Quais são os dados da minha reserva?")
+					.advisors(a -> a.param(ChatMemory.CONVERSATION_ID, "demo"))
+					.call()
+					.entity(Booking.class);
+			}
+			catch (RuntimeException ex) { // 1.1: Jackson 2 maps a missing int to 0, so no exception here
+				Section.line("ERROR", ex.getClass().getSimpleName() + ": " + abbreviate(ex.getMessage()));
+			}
 			Section.line("booking", booking);
+			if (booking == null || booking.bookingId() == null) {
+				Section.line("warning", "no booking id in the answer");
+			}
 
 			// 4) Dangerous tool: runs with no confirmation
 			Section.title("4) Cancel the booking  [1.1: no human-in-the-loop, it just runs]");
 			BookingTools.CALLS.set(0);
 			String cancel = chatClient.prompt()
-				.user("Cancel that booking")
+				.user("Cancele essa reserva")
 				.advisors(a -> a.param(ChatMemory.CONVERSATION_ID, "demo"))
 				.call()
 				.content();
@@ -85,21 +104,13 @@ public class BookingApp {
 			Section.title("5) Many tool calls  [1.1: no built-in tool call limit]");
 			BookingTools.CALLS.set(0);
 			String many = chatClient.prompt()
-				.user("Search flights to Lisbon for EVERY day from 2026-12-01 to 2026-12-07, one search per day, "
-						+ "then tell me the cheapest day.")
+				.user("Busque voos para Recife para CADA dia de 01/12/2026 a 07/12/2026, uma busca por dia, "
+						+ "e depois me diga qual é o dia mais barato.")
 				.call()
 				.content();
 			Section.line("tools run", BookingTools.CALLS.get());
 			Section.line("answer", many);
 		};
-	}
-
-	static String abbreviate(Object o) {
-		if (o == null) {
-			return "(none)";
-		}
-		String s = o.toString().replaceAll("\\s+", " ").trim();
-		return s.length() > 200 ? s.substring(0, 200) + "..." : s;
 	}
 
 }

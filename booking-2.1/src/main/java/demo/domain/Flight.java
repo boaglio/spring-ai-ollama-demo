@@ -1,4 +1,4 @@
 package demo.domain;
 
-public record Flight(String flightNumber, String airline, String departure, int priceEur) {
+public record Flight(String flightNumber, String airline, String departure, int priceBrl) {
 }
